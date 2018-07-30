@@ -1,20 +1,34 @@
+// Copyright (c) 2018, Tobechukwu Osakwe.
+//
+// All rights reserved.
+//
+// Use of this source code is governed by an
+// MIT-style license that can be found in the LICENSE file.
 #ifndef RINGY_COMPILER_H
 #define RINGY_COMPILER_H
 
 #include <jit/jit.h>
 #include <istream>
+#include <unordered_map>
 
-namespace ringy {
-  class Compiler {
+namespace ringy
+{
+    class Compiler
+    {
     public:
-      Compiler();
-      ~Compiler();
+        Compiler();
 
-      void Compile(const std::istream& stream);
+        ~Compiler();
+
+        bool Compile(std::istream &stream, std::ostream &errorMessage);
+
+        void Run();
 
     private:
-      jit_context_t jitContext;
-  };
+        std::unordered_map<unsigned long, jit_label_t> labels;
+        jit_context_t jitContext;
+        jit_function_t function;
+    };
 }
 
 #endif
