@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.0)
 project(RinGy)
+set(CMAKE_CXX_STANDARD 11)
 
 # Find the LibJIT headers
 find_path(LIBJIT_INCLUDE_DIR jit/jit.h)
