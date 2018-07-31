@@ -22,6 +22,7 @@ ringy::Compiler::~Compiler() {
 
 bool ringy::Compiler::Compile(std::istream &stream, std::ostream &errorMessage) {
     unsigned long index = 0;
+    jit_context_build_start(jitContext);
 
     // We allocate 255 bytes of memory.
     auto memorySize = jit_value_create_nint_constant(function, jit_type_int, 255);
@@ -143,44 +144,58 @@ bool ringy::Compiler::Compile(std::istream &stream, std::ostream &errorMessage) 
             jit_insn_label(function, &loopProc);
 
             auto currentValue = jit_insn_load_elem(function, memoryBuffer, i, jit_type_sys_char);
-            auto one = jit_value_create_nint_constant(function, jit_type_sys_char, 1);
+            auto one = jit_value_create_nint_constant(function, jit_type_void_ptr, 1);
             auto iPlusOne = jit_insn_add(function, i, one);
             jit_insn_store_elem(function, memoryBuffer, iPlusOne, currentValue);
 
             // Continue looping, ONLY IF i < diff.
-            auto continueLooping = jit_insn_lt(function, i, diff);
+            auto continueLooping = jit_insn_lt(function, diff, iPlusOne);
             jit_insn_branch_if(function, continueLooping, &loopProc);
+
+            // Otherwise, increment i.
+            jit_insn_store(function, i, iPlusOne);
         } else if (ch == '.') {
             // Print the character representing the value at the current memory cell.
             // Get the signature for putchar.
             auto putcharReturnType = jit_type_int;
-            auto putchar = jit_type_create_signature(jit_abi_cdecl, jit_type_int, &putcharReturnType, 1, 0);
+            auto putcharSignature = jit_type_create_signature(jit_abi_cdecl, jit_type_int, &putcharReturnType, 1, 0);
 
             // Fetch the character.
             auto currentElement = jit_insn_load_relative(function, memoryPointer, 0, jit_type_sys_char);
-            jit_insn_call_native(function, "putchar", (void *) &putchar, putchar, &currentElement, 1, JIT_CALL_NOTHROW);
+            jit_insn_call_native(function, "putchar", (void *) &putchar, putcharSignature, &currentElement, 1, JIT_CALL_NOTHROW);
         } else if (ch == ',') {
             // Print the NUMERICAL character representing the value at the current memory cell.
             // Get the signature for putchar.
             auto putcharReturnType = jit_type_int;
-            auto putchar = jit_type_create_signature(jit_abi_cdecl, jit_type_int, &putcharReturnType, 1, 0);
+            auto putcharSignature = jit_type_create_signature(jit_abi_cdecl, jit_type_int, &putcharReturnType, 1, 0);
 
             // Fetch the character.
             auto currentElement = jit_insn_load_relative(function, memoryPointer, 0, jit_type_sys_char);
             auto zeroChar = jit_value_create_nint_constant(function, jit_type_sys_char, '0');
             auto addedChars = jit_insn_add(function, currentElement, zeroChar);
-            jit_insn_call_native(function, "putchar", (void *) &putchar, putchar, &addedChars, 1, JIT_CALL_NOTHROW);
+            jit_insn_call_native(function, "putchar", (void *) &putchar, putcharSignature, &addedChars, 1, JIT_CALL_NOTHROW);
         } else if (ch == 'q') {
             // Quits the program. Just return.
             jit_insn_return(function, nullptr);
+        } else if (ch != '\n' && ch != '\r' && ch != -1) {
+            errorMessage << "index " << index << ": illegal char '" << (char) ch << "' was found";
+            return false;
         }
     }
+
+    //jit_dump_function(stdout, function, "ringy [uncompiled]");
+
+    if (jit_function_compile(function) == 0) {
+        errorMessage << "JIT compilation failed";
+        return false;
+    }
+
+    //jit_dump_function(stdout, function, "ringy [compiled]");
 
     return true;
 }
 
 void ringy::Compiler::Run() {
-    jit_dump_function(stdout, function, "ringy");
-    jit_function_compile(function);
+    jit_context_build_end(jitContext);
     jit_function_apply(function, nullptr, nullptr);
 }
