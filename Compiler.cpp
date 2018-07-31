@@ -41,14 +41,10 @@ bool ringy::Compiler::Compile(std::istream &stream, std::ostream &errorMessage) 
 
         if (ch == '<') {
             // Decrease the memory pointer.
-            auto one = jit_value_create_nint_constant(function, jit_value_get_type(memoryPointer), 0);
-            auto pointerMinusOne = jit_insn_sub(function, memoryPointer, one);
-            jit_insn_store(function, memoryPointer, pointerMinusOne);
+            jit_insn_add_relative(function, memoryPointer, -1);
         } else if (ch == '>') {
             // Increase the memory pointer.
-            auto one = jit_value_create_nint_constant(function, jit_value_get_type(memoryPointer), 0);
-            auto pointerPlusOne = jit_insn_add(function, memoryPointer, one);
-            jit_insn_store(function, memoryPointer, pointerPlusOne);
+            jit_insn_add_relative(function, memoryPointer, 1);
         } else if (ch == '\'') {
             // Writes the ascii value of the character 'c' to the memory element MP currently points at.
             if (stream.eof()) {
@@ -62,6 +58,18 @@ bool ringy::Compiler::Compile(std::istream &stream, std::ostream &errorMessage) 
 
             // Store it at the current memory pointer.
             jit_insn_store_relative(function, memoryPointer, 0, jitChar);
+        } else if (ch == '+') {
+            // 	Increases the value of the current memory element by 1.
+            auto currentElement = jit_insn_load_relative(function, memoryPointer, 0, jit_type_sys_char);
+            auto one = jit_value_create_nint_constant(function, jit_type_sys_char, 1);
+            auto increased = jit_insn_add(function, currentElement, one);
+            jit_insn_store_relative(function, memoryPointer, 0, increased);
+        } else if (ch == '-') {
+            // 	Decreases the value of the current memory element by 1.
+            auto currentElement = jit_insn_load_relative(function, memoryPointer, 0, jit_type_sys_char);
+            auto one = jit_value_create_nint_constant(function, jit_type_sys_char, 1);
+            auto decreased = jit_insn_sub(function, currentElement, one);
+            jit_insn_store_relative(function, memoryPointer, 0, decreased);
         }
     }
 
