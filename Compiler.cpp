@@ -70,6 +70,9 @@ bool ringy::Compiler::Compile(std::istream &stream, std::ostream &errorMessage) 
             auto one = jit_value_create_nint_constant(function, jit_type_sys_char, 1);
             auto decreased = jit_insn_sub(function, currentElement, one);
             jit_insn_store_relative(function, memoryPointer, 0, decreased);
+        } else if (ch == 'q') {
+            // Quits the program. Just return.
+            jit_insn_return(function, nullptr);
         }
     }
 
