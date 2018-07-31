@@ -109,24 +109,24 @@ bool ringy::Compiler::Compile(std::istream &stream, std::ostream &errorMessage) 
 
 
             if (!wasFound) {
-                errorMessage << "index " << index << ": no occurrence of the char '" << (char) ch << "' was found";
-                return false;
+//                errorMessage << "index " << index << ": no occurrence of the char '" << (char) ch << "' was found";
+//                return false;
+            } else {
+                // Replace all the characters.
+                while (!charsToPutBackAgain.empty()) {
+                    characters.push_front(charsToPutBackAgain.front());
+                    charsToPutBackAgain.pop_front();
+                }
+
+                // Now that we've found the index to jump to, maintain a reference.
+                auto targetLabel = labels.at(foundAt + 1);
+
+                // ONLY jump if the current element is NOT 0.
+                auto currentElement = jit_insn_load_relative(function, memoryPointer, 0, jit_type_sys_char);
+                auto zero = jit_value_create_nint_constant(function, jit_type_sys_char, 0);
+                auto isZero = jit_insn_eq(function, currentElement, zero);
+                jit_insn_branch_if_not(function, isZero, targetLabel);
             }
-
-            // Replace all the characters.
-            while (!charsToPutBackAgain.empty()) {
-                characters.push_front(charsToPutBackAgain.front());
-                charsToPutBackAgain.pop_front();
-            }
-
-            // Now that we've found the index to jump to, maintain a reference.
-            auto targetLabel = labels.at(foundAt);
-
-            // ONLY jump if the current element is NOT 0.
-            auto currentElement = jit_insn_load_relative(function, memoryPointer, 0, jit_type_sys_char);
-            auto zero = jit_value_create_nint_constant(function, jit_type_sys_char, 0);
-            auto isZero = jit_insn_eq(function, currentElement, zero);
-            jit_insn_branch_if_not(function, isZero, targetLabel);
         } else if (ch == '+') {
             // Increases the value of the current memory element by 1.
             auto currentElement = jit_insn_load_relative(function, memoryPointer, 0, jit_type_sys_char);
@@ -166,7 +166,7 @@ bool ringy::Compiler::Compile(std::istream &stream, std::ostream &errorMessage) 
             jit_insn_store_elem(function, memoryBuffer, iPlusOne, currentValue);
 
             // Continue looping, ONLY IF i < diff.
-            auto continueLooping = jit_insn_lt(function, diff, iPlusOne);
+            auto continueLooping = jit_insn_lt(function, diff, i);
             jit_insn_branch_if(function, continueLooping, &loopProc);
 
             // Otherwise, increment i.
