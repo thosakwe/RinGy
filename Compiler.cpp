@@ -21,6 +21,21 @@ ringy::Compiler::~Compiler() {
 }
 
 bool ringy::Compiler::Compile(std::istream &stream, std::ostream &errorMessage) {
+    // Create all labels in advance. This way, we can seek to  on a 'c instruction.
+    std::deque<int> characters;
+
+    while (!stream.eof() && !stream.fail()) {
+        auto c = stream.get();
+        characters.push_back(c);
+    }
+
+    for (auto c: characters) {
+        auto *label = new jit_label_t;
+        auto undefined = jit_label_undefined;
+        memcpy(label, &undefined, (unsigned long) sizeof(label));
+        labels.push_back(label);
+    }
+
     unsigned long index = 0;
     jit_context_build_start(jitContext);
 
@@ -33,13 +48,13 @@ bool ringy::Compiler::Compile(std::istream &stream, std::ostream &errorMessage) 
     auto memoryPointer = jit_value_create(function, jit_type_void_ptr);
     jit_insn_store(function, memoryPointer, memoryBuffer);
 
-    while (!stream.eof() && !stream.fail()) {
-        // Create a new label. This way, we can seek to it on a 'c instruction.
-        auto label = jit_label_undefined;
-        jit_insn_label(function, &label);
-        labels.insert(std::make_pair(index, label));
+    while (!characters.empty()) {
+        // Get the relevant label.
+        auto *label = labels.at(index++);
+        jit_insn_label(function, label);
 
-        auto ch = stream.get();
+        auto ch = characters.front();
+        characters.pop_front();
 
         if (ch == '<') {
             // Decrease the memory pointer.
@@ -49,13 +64,14 @@ bool ringy::Compiler::Compile(std::istream &stream, std::ostream &errorMessage) 
             jit_insn_add_relative(function, memoryPointer, 1);
         } else if (ch == '\'') {
             // Writes the ascii value of the character 'c' to the memory element MP currently points at.
-            if (stream.eof()) {
+            if (characters.empty()) {
                 errorMessage << "index " << index << ": no ASCII character found after '";
                 return false;
             }
 
             // Get the char, and convert it to a char constant.
-            ch = stream.get();
+            ch = characters.front();
+            characters.pop_front();
             auto jitChar = jit_value_create_nint_constant(function, jit_type_sys_char, ch);
 
             // Store it at the current memory pointer.
@@ -63,23 +79,25 @@ bool ringy::Compiler::Compile(std::istream &stream, std::ostream &errorMessage) 
         } else if (ch == ':') {
             // Skips through the code until the next occurence of 'c' If the value at current memory cell isn't 0, continue reading after 'c'.
             // (Else, continue reading after the first 'c'.)
-            if (stream.eof()) {
+            if (characters.empty()) {
                 errorMessage << "index " << index << ": no ASCII character found after :";
                 return false;
             }
 
             // Get the char, and convert it to a char constant.
-            ch = stream.get();
+            ch = characters.front();
+            characters.pop_front();
 
             // Loop through until the next index is found.
             unsigned long foundAt = index + 1;
             bool wasFound = false;
 
-            std::deque<int> charsToPutBack;
+            std::deque<int> charsToPutBackAgain;
 
-            while (!stream.eof() && !stream.fail()) {
-                auto c = stream.get();
-                charsToPutBack.push_back(c);
+            while (!characters.empty()) {
+                auto c = characters.front();
+                characters.pop_front();
+                charsToPutBackAgain.push_back(c);
 
                 if (c == ch) {
                     wasFound = true;
@@ -91,25 +109,24 @@ bool ringy::Compiler::Compile(std::istream &stream, std::ostream &errorMessage) 
 
 
             if (!wasFound) {
-                errorMessage << "index " << index << ": no occurrence of the char '" << ch << "' was found";
+                errorMessage << "index " << index << ": no occurrence of the char '" << (char) ch << "' was found";
                 return false;
             }
 
             // Replace all the characters.
-            while (!charsToPutBack.empty()) {
-                stream.putback((char) charsToPutBack.front());
-                charsToPutBack.pop_front();
+            while (!charsToPutBackAgain.empty()) {
+                characters.push_front(charsToPutBackAgain.front());
+                charsToPutBackAgain.pop_front();
             }
 
-            // TODO: How to jump to label that doesn't exist???
             // Now that we've found the index to jump to, maintain a reference.
-            auto targetLabel = labels.at(foundAt + 1); // TODO: What if this is EOF?
+            auto targetLabel = labels.at(foundAt);
 
             // ONLY jump if the current element is NOT 0.
             auto currentElement = jit_insn_load_relative(function, memoryPointer, 0, jit_type_sys_char);
             auto zero = jit_value_create_nint_constant(function, jit_type_sys_char, 0);
             auto isZero = jit_insn_eq(function, currentElement, zero);
-            jit_insn_branch_if_not(function, isZero, &targetLabel);
+            jit_insn_branch_if_not(function, isZero, targetLabel);
         } else if (ch == '+') {
             // Increases the value of the current memory element by 1.
             auto currentElement = jit_insn_load_relative(function, memoryPointer, 0, jit_type_sys_char);
@@ -162,7 +179,8 @@ bool ringy::Compiler::Compile(std::istream &stream, std::ostream &errorMessage) 
 
             // Fetch the character.
             auto currentElement = jit_insn_load_relative(function, memoryPointer, 0, jit_type_sys_char);
-            jit_insn_call_native(function, "putchar", (void *) &putchar, putcharSignature, &currentElement, 1, JIT_CALL_NOTHROW);
+            jit_insn_call_native(function, "putchar", (void *) &putchar, putcharSignature, &currentElement, 1,
+                                 JIT_CALL_NOTHROW);
         } else if (ch == ',') {
             // Print the NUMERICAL character representing the value at the current memory cell.
             // Get the signature for putchar.
@@ -173,11 +191,13 @@ bool ringy::Compiler::Compile(std::istream &stream, std::ostream &errorMessage) 
             auto currentElement = jit_insn_load_relative(function, memoryPointer, 0, jit_type_sys_char);
             auto zeroChar = jit_value_create_nint_constant(function, jit_type_sys_char, '0');
             auto addedChars = jit_insn_add(function, currentElement, zeroChar);
-            jit_insn_call_native(function, "putchar", (void *) &putchar, putcharSignature, &addedChars, 1, JIT_CALL_NOTHROW);
+            jit_insn_call_native(function, "putchar", (void *) &putchar, putcharSignature, &addedChars, 1,
+                                 JIT_CALL_NOTHROW);
         } else if (ch == 'q') {
             // Quits the program. Just return.
             jit_insn_return(function, nullptr);
         } else if (ch != '\n' && ch != '\r' && ch != -1) {
+            continue;
             errorMessage << "index " << index << ": illegal char '" << (char) ch << "' was found";
             return false;
         }

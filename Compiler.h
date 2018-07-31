@@ -9,7 +9,7 @@
 
 #include <jit/jit.h>
 #include <istream>
-#include <unordered_map>
+#include <vector>
 
 namespace ringy
 {
@@ -25,7 +25,7 @@ namespace ringy
         void Run();
 
     private:
-        std::unordered_map<unsigned long, jit_label_t> labels;
+        std::vector<jit_label_t*> labels;
         jit_context_t jitContext;
         jit_function_t function;
     };
