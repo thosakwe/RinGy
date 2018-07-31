@@ -7,33 +7,42 @@
 #include "Compiler.h"
 
 ringy::Compiler::Compiler() {
-  jitContext = jit_context_create();
+    jitContext = jit_context_create();
 
-  // The entry point takes no parameters, and returns void.
-  auto signature = jit_type_create_signature(jit_abi_cdecl, jit_type_void, nullptr, 0, 0);
-  function = jit_function_create(jitContext, signature);
+    // The entry point takes no parameters, and returns void.
+    auto signature = jit_type_create_signature(jit_abi_cdecl, jit_type_void, nullptr, 0, 0);
+    function = jit_function_create(jitContext, signature);
 }
 
 ringy::Compiler::~Compiler() {
-  jit_context_destroy(jitContext);
+    jit_context_destroy(jitContext);
 }
 
 bool ringy::Compiler::Compile(std::istream &stream, std::ostream &errorMessage) {
-  unsigned long index = 0;
+    unsigned long index = 0;
 
-  while (!stream.eof()) {
-    // Create a new label. This way, we can seek to it on a 'c instruction.
-    auto label = jit_label_undefined;
-    jit_insn_label(function, &label);
-    labels.insert(std::make_pair(index, label));
+    // We allocate 255 bytes of memory.
+    auto memorySize = jit_value_create_nint_constant(function, jit_type_int, 255);
+    auto memoryBuffer = jit_insn_alloca(function, memorySize);
 
-    auto ch = stream.get();
-  }
+    // We also manage a memory pointer, a void*.
+    // Initially, it points to the root of the buffer.
+    auto memoryPointer = jit_value_create(function, jit_type_void_ptr);
+    jit_insn_store(function, memoryPointer, memoryBuffer);
 
-  return true;
+    while (!stream.eof()) {
+        // Create a new label. This way, we can seek to it on a 'c instruction.
+        auto label = jit_label_undefined;
+        jit_insn_label(function, &label);
+        labels.insert(std::make_pair(index, label));
+
+        auto ch = stream.get();
+    }
+
+    return true;
 }
 
 void ringy::Compiler::Run() {
-  jit_function_compile(function);
-  jit_function_apply(function, nullptr, nullptr);
+    jit_function_compile(function);
+    jit_function_apply(function, nullptr, nullptr);
 }
