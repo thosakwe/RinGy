@@ -25,7 +25,7 @@ namespace ringy
         void Run();
 
     private:
-        std::vector<jit_label_t*> labels;
+        std::vector<jit_label_t> labels;
         jit_context_t jitContext;
         jit_function_t function;
     };

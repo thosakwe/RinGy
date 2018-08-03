@@ -30,9 +30,7 @@ bool ringy::Compiler::Compile(std::istream &stream, std::ostream &errorMessage) 
     }
 
     for (auto c: characters) {
-        auto *label = new jit_label_t;
-        auto undefined = jit_label_undefined;
-        memcpy(label, &undefined, (unsigned long) sizeof(label));
+        auto label = jit_function_reserve_label(function);
         labels.push_back(label);
     }
 
@@ -50,8 +48,8 @@ bool ringy::Compiler::Compile(std::istream &stream, std::ostream &errorMessage) 
 
     while (!characters.empty()) {
         // Get the relevant label.
-        auto *label = labels.at(index++);
-        jit_insn_label(function, label);
+        auto label = labels.at(index++);
+        jit_insn_label(function, &label);
 
         auto ch = characters.front();
         characters.pop_front();
@@ -125,7 +123,7 @@ bool ringy::Compiler::Compile(std::istream &stream, std::ostream &errorMessage) 
                 auto currentElement = jit_insn_load_relative(function, memoryPointer, 0, jit_type_sys_char);
                 auto zero = jit_value_create_nint_constant(function, jit_type_sys_char, 0);
                 auto isZero = jit_insn_eq(function, currentElement, zero);
-                jit_insn_branch_if_not(function, isZero, targetLabel);
+                jit_insn_branch_if_not(function, isZero, &targetLabel);
             }
         } else if (ch == '+') {
             // Increases the value of the current memory element by 1.
